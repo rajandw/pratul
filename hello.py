@@ -1,4 +1,5 @@
-from hello import hello
+def hello():
+    return "Hello World ~ Pratul"
 
-def test_hello():
-    assert hello() == "Hello World ~ Pratul"
+# Add this line to call the function
+print(hello())
