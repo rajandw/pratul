@@ -1,0 +1,69 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Launch EC2 instance and deploy
+        run: |
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id ami-0c94855ba95c71c99 \  # Ubuntu 22.04 LTS (update with latest AMI in your region)
+            --instance-type t2.micro \
+            --key-name ${{ secrets.AWS_KEY_PAIR_NAME }} \
+            --security-group-ids ${{ secrets.AWS_SECURITY_GROUP_ID }} \
+            --subnet-id ${{ secrets.AWS_SUBNET_ID }} \
+            --count 1 \
+            --output text \
+            --query 'Instances[0].InstanceId')
+
+          echo "Launched EC2 instance: $INSTANCE_ID"
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          echo "Public IP: $PUBLIC_IP"
+
+          sleep 60  # Give the instance a moment to boot
+
+          # Copy the code to the EC2 instance and run
+          scp -i ${{ secrets.AWS_SSH_PRIVATE_KEY_PATH }} -o StrictHostKeyChecking=no hello.py ubuntu@$PUBLIC_IP:/home/ubuntu/
+          ssh -i ${{ secrets.AWS_SSH_PRIVATE_KEY_PATH }} -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP "sudo apt update && sudo apt install -y python3 && python3 /home/ubuntu/hello.py"
+
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
