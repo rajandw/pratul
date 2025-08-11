@@ -1,0 +1,8 @@
+# Core testing dependency
+pytest==8.3.2
+
+# AWS CLI for deployment (optional - if install via system packages in GitHub Actions)
+# awscli==1.36.4
+
+# Boto3 SDK (in case want to interact with AWS via Python instead of only CLI)
+# boto3==1.35.24
